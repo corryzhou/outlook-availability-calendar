@@ -9,7 +9,7 @@ import {
   isToday,
 } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 // Show 7:00 – 23:00: hours 7–22, labels "7–8" ... "22–23"
@@ -36,7 +36,7 @@ export default function Home() {
     };
   }, [currentDate]);
 
-  const { data, isLoading } = trpc.calendar.getAvailability.useQuery(
+  const { data, isLoading, refetch, isFetching } = trpc.calendar.getAvailability.useQuery(
     { startDate, endDate },
     { staleTime: 5 * 60 * 1000 }
   );
@@ -161,6 +161,23 @@ export default function Home() {
               className="px-3 h-7 text-[10px] tracking-[0.12em] uppercase font-sans border border-border hover:bg-accent transition-colors ml-1"
             >
               今天
+            </button>
+
+            {/* Refresh button — right side */}
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className={`ml-auto w-7 h-7 flex items-center justify-center border border-border transition-colors ${
+                isFetching ? "opacity-50 cursor-not-allowed" : "hover:bg-accent cursor-pointer"
+              }`}
+              aria-label="刷新日历"
+              title="刷新日历"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 transition-transform ${
+                  isFetching ? "animate-spin" : ""
+                }`}
+              />
             </button>
           </div>
         </div>
