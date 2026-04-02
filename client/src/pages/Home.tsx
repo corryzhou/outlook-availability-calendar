@@ -197,16 +197,24 @@ export default function Home() {
             {/* Corner cell aligns with day header row */}
             <div className="h-10 border-r border-b border-border" />
             {/* Hour labels */}
-            {DISPLAY_HOURS.map((hour) => (
-              <div
-                key={hour}
-                className="h-7 flex items-center justify-end pr-2 border-r border-b border-border"
-              >
-                <span className="text-[10px] text-muted-foreground font-mono tracking-wide whitespace-nowrap">
-                  {hour}–{hour + 1}
-                </span>
-              </div>
-            ))}
+            {DISPLAY_HOURS.map((hour) => {
+              const isTimeDivider = hour === 11 || hour === 17;
+              return (
+                <div
+                  key={hour}
+                  className="h-7 flex items-center justify-end pr-2 border-r border-border"
+                  style={{
+                    borderBottom: isTimeDivider
+                      ? "2px solid var(--border-strong, #b0a090)"
+                      : "1px solid var(--border)",
+                  }}
+                >
+                  <span className="text-[10px] text-muted-foreground font-mono tracking-wide whitespace-nowrap">
+                    {hour}–{hour + 1}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/* ── Scrollable right section: day headers + cells ── */}
@@ -228,10 +236,16 @@ export default function Home() {
               >
                 {calendarDays.map((day, i) => {
                   const todayFlag = isToday(day);
+                  const isSundayHeader = day.getDay() === 0;
                   return (
                     <div
                       key={i}
-                      className="h-10 flex flex-col items-center justify-center border-r border-border"
+                      className="h-10 flex flex-col items-center justify-center border-border"
+                      style={{
+                        borderRight: isSundayHeader
+                          ? "2px solid var(--border-strong, #b0a090)"
+                          : "1px solid var(--border)",
+                      }}
                     >
                       <span className="text-[8px] tracking-widest uppercase text-muted-foreground font-sans leading-none">
                         {DAY_NAMES[day.getDay()]}
@@ -251,43 +265,56 @@ export default function Home() {
               </div>
 
               {/* ── Hour rows ── */}
-              {DISPLAY_HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="grid"
-                  style={{ gridTemplateColumns: `repeat(${totalCols}, 44px)` }}
-                >
-                  {calendarDays.map((day, di) => {
-                    const dateKey = format(day, "yyyy-MM-dd");
-                    const busyMap = availMap[dateKey];
-                    const isBusy = busyMap?.[hour] === true;
-                    const hasData = busyMap !== undefined;
+              {DISPLAY_HOURS.map((hour) => {
+                const isTimeDivider = hour === 11 || hour === 17;
+                return (
+                  <div
+                    key={hour}
+                    className="grid"
+                    style={{ gridTemplateColumns: `repeat(${totalCols}, 44px)` }}
+                  >
+                    {calendarDays.map((day, di) => {
+                      const dateKey = format(day, "yyyy-MM-dd");
+                      const busyMap = availMap[dateKey];
+                      const isBusy = busyMap?.[hour] === true;
+                      const hasData = busyMap !== undefined;
+                      const isSunday = day.getDay() === 0; // Sunday = 0
 
-                    return (
-                      <div
-                        key={di}
-                        className={`h-7 border-b border-r border-border relative transition-colors ${
-                          isLoading ? "animate-pulse bg-muted/20" : ""
-                        }`}
-                        style={
-                          !isLoading && isBusy
-                            ? { backgroundColor: "var(--busy-light)", borderLeftColor: "var(--busy)", borderLeftWidth: "2px" }
-                            : {}
-                        }
-                      >
-                        {!isLoading && hasData && isBusy && (
-                          <span
-                            className="absolute inset-0 flex items-center justify-center text-[8px] tracking-[0.08em] font-sans pointer-events-none"
-                            style={{ color: "var(--busy)" }}
-                          >
-                            已预定
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                      const borderBottom = isTimeDivider
+                        ? "2px solid var(--border-strong, #b0a090)"
+                        : "1px solid var(--border)";
+                      const borderRight = isSunday
+                        ? "2px solid var(--border-strong, #b0a090)"
+                        : "1px solid var(--border)";
+
+                      return (
+                        <div
+                          key={di}
+                          className={`h-7 relative transition-colors ${
+                            isLoading ? "animate-pulse bg-muted/20" : ""
+                          }`}
+                          style={{
+                            borderBottom,
+                            borderRight,
+                            ...((!isLoading && isBusy)
+                              ? { backgroundColor: "var(--busy-light)", borderLeft: "2px solid var(--busy)" }
+                              : {}),
+                          }}
+                        >
+                          {!isLoading && hasData && isBusy && (
+                            <span
+                              className="absolute inset-0 flex items-center justify-center text-[8px] tracking-[0.08em] font-sans pointer-events-none"
+                              style={{ color: "var(--busy)" }}
+                            >
+                              已预定
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
