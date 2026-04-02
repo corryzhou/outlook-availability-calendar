@@ -19,6 +19,13 @@ const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
 export default function Home() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
 
+  // Navigation bounds: past 2 months to future 6 months
+  const today = useMemo(() => new Date(), []);
+  const minMonth = useMemo(() => startOfMonth(addMonths(today, -2)), [today]);
+  const maxMonth = useMemo(() => startOfMonth(addMonths(today, 6)), [today]);
+  const canGoPrev = startOfMonth(currentDate) > minMonth;
+  const canGoNext = startOfMonth(currentDate) < maxMonth;
+
   // Month range for data fetching
   const { startDate, endDate } = useMemo(() => {
     const ms = startOfMonth(currentDate);
@@ -123,8 +130,11 @@ export default function Home() {
         <div className="container">
           <div className="py-3 flex items-center gap-3">
             <button
-              onClick={() => setCurrentDate((d) => subMonths(d, 1))}
-              className="w-7 h-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
+              onClick={() => canGoPrev && setCurrentDate((d) => subMonths(d, 1))}
+              disabled={!canGoPrev}
+              className={`w-7 h-7 flex items-center justify-center border border-border transition-colors ${
+                canGoPrev ? "hover:bg-accent cursor-pointer" : "opacity-30 cursor-not-allowed"
+              }`}
               aria-label="上个月"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
@@ -135,8 +145,11 @@ export default function Home() {
             </span>
 
             <button
-              onClick={() => setCurrentDate((d) => addMonths(d, 1))}
-              className="w-7 h-7 flex items-center justify-center border border-border hover:bg-accent transition-colors"
+              onClick={() => canGoNext && setCurrentDate((d) => addMonths(d, 1))}
+              disabled={!canGoNext}
+              className={`w-7 h-7 flex items-center justify-center border border-border transition-colors ${
+                canGoNext ? "hover:bg-accent cursor-pointer" : "opacity-30 cursor-not-allowed"
+              }`}
               aria-label="下个月"
             >
               <ChevronRight className="w-3.5 h-3.5" />
