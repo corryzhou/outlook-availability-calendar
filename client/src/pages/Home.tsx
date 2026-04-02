@@ -6,9 +6,6 @@ import {
   addMonths,
   subMonths,
   addDays,
-  startOfWeek,
-  endOfWeek,
-  isSameMonth,
   isToday,
 } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -57,10 +54,10 @@ export default function Home() {
     return map;
   }, [days]);
 
-  // Build calendar grid days (full weeks covering the month)
+  // Build calendar grid days: from 1st to last day of month (no week padding)
   const calendarDays = useMemo(() => {
-    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
+    const start = startOfMonth(currentDate);
+    const end = endOfMonth(currentDate);
     const result: Date[] = [];
     let cursor = start;
     while (cursor <= end) {
@@ -100,15 +97,9 @@ export default function Home() {
       <header className="border-b border-border">
         <div className="container">
           <div className="py-6 flex flex-col gap-1">
-            <p className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground font-sans">
-              时间可用性
-            </p>
             <h1 className="text-4xl md:text-5xl font-serif text-foreground leading-tight">
-              日历
+              Corry 教练工作日历
             </h1>
-            <p className="text-sm text-muted-foreground font-sans mt-1 tracking-wide">
-              仅显示空闲与忙碌状态，不含具体事项
-            </p>
           </div>
         </div>
       </header>
@@ -184,14 +175,11 @@ export default function Home() {
               {/* Corner */}
               <div className="h-10 border-r border-border" />
               {calendarDays.map((day, i) => {
-                const inMonth = isSameMonth(day, currentDate);
                 const today = isToday(day);
                 return (
                   <div
                     key={i}
-                    className={`h-10 flex flex-col items-center justify-center border-r border-border ${
-                      !inMonth ? "opacity-30" : ""
-                    }`}
+                    className="h-10 flex flex-col items-center justify-center border-r border-border"
                   >
                     <span className="text-[8px] tracking-widest uppercase text-muted-foreground font-sans leading-none">
                       {DAY_NAMES[day.getDay()]}
@@ -200,9 +188,7 @@ export default function Home() {
                       className={`text-xs font-serif mt-0.5 leading-none ${
                         today
                           ? "w-5 h-5 flex items-center justify-center rounded-full bg-foreground text-background text-[10px]"
-                          : inMonth
-                          ? "text-foreground"
-                          : "text-muted-foreground"
+                          : "text-foreground"
                       }`}
                     >
                       {format(day, "d")}
@@ -228,18 +214,17 @@ export default function Home() {
 
                 {/* Day cells */}
                 {calendarDays.map((day, di) => {
-                  const inMonth = isSameMonth(day, currentDate);
                   const dateKey = format(day, "yyyy-MM-dd");
                   const busyMap = availMap[dateKey];
-                  const isBusy = inMonth && busyMap?.[hour] === true;
-                  const hasData = inMonth && busyMap !== undefined;
+                  const isBusy = busyMap?.[hour] === true;
+                  const hasData = busyMap !== undefined;
 
                   return (
                     <div
                       key={di}
                       className={`h-7 border-b border-r border-border relative transition-colors ${
-                        !inMonth ? "opacity-20" : ""
-                      } ${isLoading && inMonth ? "animate-pulse bg-muted/20" : ""}`}
+                        isLoading ? "animate-pulse bg-muted/20" : ""
+                      }`}
                       style={
                         !isLoading && isBusy
                           ? { backgroundColor: "var(--busy-light)", borderLeftColor: "var(--busy)", borderLeftWidth: "2px" }
