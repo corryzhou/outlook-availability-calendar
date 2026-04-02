@@ -49,6 +49,7 @@ export default function Home() {
   const days = data?.days ?? [];
 
   // Build busy map: date -> hour -> busy
+  // Server now encodes Beijing hour in the UTC position of the ISO string
   const availMap = useMemo(() => {
     const map: Record<string, Record<number, boolean>> = {};
     for (const day of days) {
@@ -74,7 +75,7 @@ export default function Home() {
     return result;
   }, [currentDate]);
 
-  // Drag-to-scroll on the grid container
+  // Drag-to-scroll on the scrollable day grid
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragState = useRef({ dragging: false, startX: 0, scrollLeft: 0 });
 
@@ -96,7 +97,7 @@ export default function Home() {
     if (scrollRef.current) scrollRef.current.style.cursor = "grab";
   }
 
-  const totalCols = calendarDays.length; // 28–42 days
+  const totalCols = calendarDays.length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -167,96 +168,110 @@ export default function Home() {
 
       {/* ── Calendar grid ──────────────────────────────────────────────────── */}
       <main className="container py-4">
-        {/* Outer scroll wrapper — horizontal drag to scroll */}
-        <div
-          ref={scrollRef}
-          className="overflow-x-auto select-none"
-          style={{ cursor: "grab" }}
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
-        >
-          {/* Fixed-width inner grid */}
-          <div style={{ minWidth: `${64 + totalCols * 44}px` }}>
+        {/*
+          Two-column layout:
+          - Left: frozen time labels (w-16, does NOT scroll)
+          - Right: scrollable day columns (overflow-x-auto + drag)
+        */}
+        <div className="flex">
 
-            {/* ── Day header row ── */}
-            <div
-              className="grid border-b border-border"
-              style={{ gridTemplateColumns: `64px repeat(${totalCols}, 44px)` }}
-            >
-              {/* Corner */}
-              <div className="h-10 border-r border-border" />
-              {calendarDays.map((day, i) => {
-                const today = isToday(day);
-                return (
-                  <div
-                    key={i}
-                    className="h-10 flex flex-col items-center justify-center border-r border-border"
-                  >
-                    <span className="text-[8px] tracking-widest uppercase text-muted-foreground font-sans leading-none">
-                      {DAY_NAMES[day.getDay()]}
-                    </span>
-                    <span
-                      className={`text-xs font-serif mt-0.5 leading-none ${
-                        today
-                          ? "w-5 h-5 flex items-center justify-center rounded-full bg-foreground text-background text-[10px]"
-                          : "text-foreground"
-                      }`}
-                    >
-                      {format(day, "d")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── Hour rows ── */}
+          {/* ── Frozen left column: time labels ── */}
+          <div className="shrink-0 w-16 bg-background z-10">
+            {/* Corner cell aligns with day header row */}
+            <div className="h-10 border-r border-b border-border" />
+            {/* Hour labels */}
             {DISPLAY_HOURS.map((hour) => (
               <div
                 key={hour}
-                className="grid"
-                style={{ gridTemplateColumns: `64px repeat(${totalCols}, 44px)` }}
+                className="h-7 flex items-center justify-end pr-2 border-r border-b border-border"
               >
-                {/* Time range label */}
-                <div className="h-7 flex items-center justify-end pr-2 border-r border-b border-border">
-                  <span className="text-[10px] text-muted-foreground font-mono tracking-wide whitespace-nowrap">
-                    {hour}–{hour + 1}
-                  </span>
-                </div>
+                <span className="text-[10px] text-muted-foreground font-mono tracking-wide whitespace-nowrap">
+                  {hour}–{hour + 1}
+                </span>
+              </div>
+            ))}
+          </div>
 
-                {/* Day cells */}
-                {calendarDays.map((day, di) => {
-                  const dateKey = format(day, "yyyy-MM-dd");
-                  const busyMap = availMap[dateKey];
-                  const isBusy = busyMap?.[hour] === true;
-                  const hasData = busyMap !== undefined;
+          {/* ── Scrollable right section: day headers + cells ── */}
+          <div
+            ref={scrollRef}
+            className="overflow-x-auto select-none flex-1"
+            style={{ cursor: "grab" }}
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
+            onMouseLeave={onMouseUp}
+          >
+            <div style={{ minWidth: `${totalCols * 44}px` }}>
 
+              {/* ── Day header row ── */}
+              <div
+                className="grid border-b border-border"
+                style={{ gridTemplateColumns: `repeat(${totalCols}, 44px)` }}
+              >
+                {calendarDays.map((day, i) => {
+                  const todayFlag = isToday(day);
                   return (
                     <div
-                      key={di}
-                      className={`h-7 border-b border-r border-border relative transition-colors ${
-                        isLoading ? "animate-pulse bg-muted/20" : ""
-                      }`}
-                      style={
-                        !isLoading && isBusy
-                          ? { backgroundColor: "var(--busy-light)", borderLeftColor: "var(--busy)", borderLeftWidth: "2px" }
-                          : {}
-                      }
+                      key={i}
+                      className="h-10 flex flex-col items-center justify-center border-r border-border"
                     >
-                      {!isLoading && hasData && isBusy && (
-                        <span
-                          className="absolute inset-0 flex items-center justify-center text-[8px] tracking-[0.08em] font-sans pointer-events-none"
-                          style={{ color: "var(--busy)" }}
-                        >
-                          已预定
-                        </span>
-                      )}
+                      <span className="text-[8px] tracking-widest uppercase text-muted-foreground font-sans leading-none">
+                        {DAY_NAMES[day.getDay()]}
+                      </span>
+                      <span
+                        className={`text-xs font-serif mt-0.5 leading-none ${
+                          todayFlag
+                            ? "w-5 h-5 flex items-center justify-center rounded-full bg-foreground text-background text-[10px]"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {format(day, "d")}
+                      </span>
                     </div>
                   );
                 })}
               </div>
-            ))}
+
+              {/* ── Hour rows ── */}
+              {DISPLAY_HOURS.map((hour) => (
+                <div
+                  key={hour}
+                  className="grid"
+                  style={{ gridTemplateColumns: `repeat(${totalCols}, 44px)` }}
+                >
+                  {calendarDays.map((day, di) => {
+                    const dateKey = format(day, "yyyy-MM-dd");
+                    const busyMap = availMap[dateKey];
+                    const isBusy = busyMap?.[hour] === true;
+                    const hasData = busyMap !== undefined;
+
+                    return (
+                      <div
+                        key={di}
+                        className={`h-7 border-b border-r border-border relative transition-colors ${
+                          isLoading ? "animate-pulse bg-muted/20" : ""
+                        }`}
+                        style={
+                          !isLoading && isBusy
+                            ? { backgroundColor: "var(--busy-light)", borderLeftColor: "var(--busy)", borderLeftWidth: "2px" }
+                            : {}
+                        }
+                      >
+                        {!isLoading && hasData && isBusy && (
+                          <span
+                            className="absolute inset-0 flex items-center justify-center text-[8px] tracking-[0.08em] font-sans pointer-events-none"
+                            style={{ color: "var(--busy)" }}
+                          >
+                            已预定
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -274,7 +289,7 @@ export default function Home() {
             <span className="text-[10px] text-muted-foreground font-sans tracking-wide">空闲</span>
           </div>
           <div className="ml-auto">
-            <p className="text-[10px] text-muted-foreground font-sans tracking-wide">时间均为 UTC</p>
+            <p className="text-[10px] text-muted-foreground font-sans tracking-wide">时间均为北京时间（UTC+8）</p>
           </div>
         </div>
       </main>
