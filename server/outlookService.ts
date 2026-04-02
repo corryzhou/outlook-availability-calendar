@@ -8,25 +8,25 @@
  * - The frontend only receives boolean busy/free per hour.
  *
  * TIMEZONE: All date/hour calculations are done in Beijing Time (UTC+8).
- * The frontend receives date strings ("YYYY-MM-DD") and hour numbers (0-23)
- * in Beijing Time. Slot.start is kept as a UTC ISO string for compatibility
- * but the hour encoded in it represents Beijing local hour.
+ * busyHoursMap key = "YYYY-MM-DD" in Beijing local date.
+ * Slot.start encodes Beijing hour in the UTC position so the frontend can
+ * read it with getUTCHours() without any further conversion.
  */
 
 import ICAL from "ical.js";
 
-const CST_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8
+const CST_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8 = 28800000 ms
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TimeSlot {
-  start: string;  // ISO string — hour in UTC represents Beijing hour
+  start: string;  // ISO string — UTC hour field encodes Beijing hour
   end: string;
   busy: boolean;
 }
 
 export interface DayAvailability {
-  date: string;   // "YYYY-MM-DD" in Beijing Time
+  date: string;   // "YYYY-MM-DD" Beijing local date
   slots: TimeSlot[];
 }
 
@@ -61,14 +61,19 @@ export async function isOutlookConnected(): Promise<boolean> {
 
 /**
  * Fetch and parse the iCal feed.
- * Returns only { start: Date, end: Date } — all other event data is discarded.
+ * Returns two separate lists:
+ *  - allDayDates: Beijing date strings for all-day events (mark 7–22 as busy)
+ *  - timedIntervals: { start: Date, end: Date } for timed events
  */
-async function fetchBusyIntervals(
-  rangeStart: Date,
-  rangeEnd: Date
-): Promise<{ start: Date; end: Date }[]> {
+async function fetchEvents(
+  rangeStartUtc: Date,
+  rangeEndUtc: Date
+): Promise<{
+  allDayDates: string[];           // "YYYY-MM-DD" Beijing dates
+  timedIntervals: { start: Date; end: Date }[];
+}> {
   const url = getIcalUrl();
-  if (!url) return [];
+  if (!url) return { allDayDates: [], timedIntervals: [] };
 
   const response = await fetch(url, {
     headers: { "User-Agent": "CalendarAvailabilityBot/1.0" },
@@ -84,40 +89,40 @@ async function fetchBusyIntervals(
   const comp = new ICAL.Component(jcalData);
   const vevents = comp.getAllSubcomponents("vevent");
 
-  const intervals: { start: Date; end: Date }[] = [];
+  const allDayDates: string[] = [];
+  const timedIntervals: { start: Date; end: Date }[] = [];
+
+  // Range as Beijing date strings for filtering all-day events
+  const rangeStartBeijingDate = toBeijingDateStr(rangeStartUtc);
+  const rangeEndBeijingDate = toBeijingDateStr(rangeEndUtc);
 
   for (const vevent of vevents) {
     try {
       const event = new ICAL.Event(vevent);
 
-      // All-day events (DATE type): mark Beijing hours 7–22 as busy for each day
+      // ── All-day events (DATE type, no time component) ──
       if (event.startDate && event.startDate.isDate) {
-        // All-day event dates are local calendar dates (no timezone)
-        // Use the date string directly as Beijing date
-        const allDayStartStr = event.startDate.toString().slice(0, 10); // "YYYY-MM-DD"
-        const allDayEndStr = event.endDate.toString().slice(0, 10);     // exclusive
+        // iCal DATE values are pure calendar dates with no timezone.
+        // Treat them directly as Beijing local dates.
+        const startStr = event.startDate.toString().slice(0, 10); // "YYYY-MM-DD"
+        const endStr   = event.endDate.toString().slice(0, 10);   // exclusive end date
 
-        const cursor = new Date(`${allDayStartStr}T00:00:00Z`);
-        const endLimit = new Date(`${allDayEndStr}T00:00:00Z`);
+        // Iterate each calendar day of the all-day event
+        const cursor = new Date(`${startStr}T00:00:00Z`);
+        const endLimit = new Date(`${endStr}T00:00:00Z`);
 
         while (cursor < endLimit) {
-          const dateStr = cursor.toISOString().slice(0, 10);
-          // Mark Beijing hours 7–22 (slot 7→8, ..., 22→23)
-          for (let h = 7; h <= 22; h++) {
-            // Encode as UTC slot where UTC hour = Beijing hour (frontend reads it this way)
-            const slotStart = new Date(`${dateStr}T${String(h).padStart(2, '0')}:00:00Z`);
-            const slotEnd   = new Date(`${dateStr}T${String(h + 1).padStart(2, '0')}:00:00Z`);
-            // Check against range (range is also in Beijing-date-based UTC)
-            if (slotStart < rangeEnd && slotEnd > rangeStart) {
-              intervals.push({ start: slotStart, end: slotEnd });
-            }
+          const dateStr = cursor.toISOString().slice(0, 10); // "YYYY-MM-DD"
+          // Only include dates within our query range
+          if (dateStr >= rangeStartBeijingDate && dateStr <= rangeEndBeijingDate) {
+            allDayDates.push(dateStr);
           }
           cursor.setUTCDate(cursor.getUTCDate() + 1);
         }
         continue;
       }
 
-      // Timed events: use actual UTC timestamps
+      // ── Timed events ──
       if (event.isRecurring()) {
         const iter = event.iterator();
         let next = iter.next();
@@ -125,19 +130,19 @@ async function fetchBusyIntervals(
         while (next && safetyCount < 500) {
           safetyCount++;
           const start = next.toJSDate();
-          if (start > rangeEnd) break;
+          if (start > rangeEndUtc) break;
           const durationSec = event.duration.toSeconds();
           const end = new Date(start.getTime() + durationSec * 1000);
-          if (end >= rangeStart) {
-            intervals.push({ start, end });
+          if (end >= rangeStartUtc) {
+            timedIntervals.push({ start, end });
           }
           next = iter.next();
         }
       } else {
         const start = event.startDate.toJSDate();
         const end = event.endDate.toJSDate();
-        if (start < rangeEnd && end > rangeStart) {
-          intervals.push({ start, end });
+        if (start < rangeEndUtc && end > rangeStartUtc) {
+          timedIntervals.push({ start, end });
         }
       }
     } catch {
@@ -145,7 +150,7 @@ async function fetchBusyIntervals(
     }
   }
 
-  return intervals;
+  return { allDayDates, timedIntervals };
 }
 
 /**
@@ -157,23 +162,27 @@ export async function getAvailabilityForRange(
   startDate: string,  // "YYYY-MM-DD" Beijing date
   endDate: string     // "YYYY-MM-DD" Beijing date
 ): Promise<DayAvailability[]> {
-  // Range in UTC: Beijing midnight = UTC 16:00 previous day
-  // To be safe, expand range by one day on each side
   const rangeStartUtc = new Date(`${startDate}T00:00:00+08:00`);
   const rangeEndUtc   = new Date(`${endDate}T23:59:59+08:00`);
 
-  const intervals = await fetchBusyIntervals(rangeStartUtc, rangeEndUtc);
+  const { allDayDates, timedIntervals } = await fetchEvents(rangeStartUtc, rangeEndUtc);
 
   // Build busy-hour sets per Beijing date
   // Key: "YYYY-MM-DD" (Beijing), Value: Set of Beijing hours (0-23)
   const busyHoursMap: Record<string, Set<number>> = {};
 
-  for (const { start, end } of intervals) {
-    // Walk through each UTC hour covered by this interval
-    // and convert to Beijing date + hour
+  // ── All-day events: mark Beijing hours 7–22 as busy ──
+  for (const dateStr of allDayDates) {
+    if (!busyHoursMap[dateStr]) busyHoursMap[dateStr] = new Set();
+    for (let h = 7; h <= 22; h++) {
+      busyHoursMap[dateStr].add(h);
+    }
+  }
+
+  // ── Timed events: walk UTC hours, convert to Beijing date+hour ──
+  for (const { start, end } of timedIntervals) {
     const cursor = new Date(start);
-    // Round down to the start of the UTC hour
-    cursor.setUTCMinutes(0, 0, 0);
+    cursor.setUTCMinutes(0, 0, 0); // round down to hour boundary
 
     while (cursor < end) {
       const beijingDate = toBeijingDateStr(cursor);
@@ -186,13 +195,13 @@ export async function getAvailabilityForRange(
     }
   }
 
-  // Build result array — one entry per Beijing calendar day
+  // ── Build result array — one entry per Beijing calendar day ──
   const result: DayAvailability[] = [];
   const cursor = new Date(`${startDate}T00:00:00Z`);
   const endCursor = new Date(`${endDate}T00:00:00Z`);
 
   while (cursor <= endCursor) {
-    const dateKey = cursor.toISOString().slice(0, 10);
+    const dateKey = cursor.toISOString().slice(0, 10); // "YYYY-MM-DD"
     const busyHours = busyHoursMap[dateKey] ?? new Set();
 
     const slots: TimeSlot[] = [];
