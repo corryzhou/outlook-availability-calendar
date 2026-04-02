@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { format, addDays, startOfWeek, isSameDay, isToday } from "date-fns";
-import { zhCN } from "date-fns/locale";
+import { format, addDays, isToday } from "date-fns";
 import type { DayAvailability } from "../../../server/outlookService";
 
 interface WeekCalendarProps {
@@ -9,12 +8,8 @@ interface WeekCalendarProps {
   isLoading: boolean;
 }
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const DISPLAY_HOURS = Array.from({ length: 17 }, (_, i) => i + 7); // 7:00 – 23:00
-
-function formatHour(h: number): string {
-  return `${String(h).padStart(2, "0")}:00`;
-}
+// Show 7:00 – 22:00 (16 slots)
+const DISPLAY_HOURS = Array.from({ length: 16 }, (_, i) => i + 7);
 
 export default function WeekCalendar({ weekStart, availability, isLoading }: WeekCalendarProps) {
   const days = useMemo(() =>
@@ -38,21 +33,21 @@ export default function WeekCalendar({ weekStart, availability, isLoading }: Wee
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[640px]">
+      <div className="min-w-[600px]">
         {/* Header row */}
-        <div className="grid" style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}>
-          <div className="h-14" />
+        <div className="grid" style={{ gridTemplateColumns: "64px repeat(7, 1fr)" }}>
+          <div className="h-10" />
           {days.map((day, i) => {
             const today = isToday(day);
             return (
-              <div key={i} className="h-14 flex flex-col items-center justify-center border-b border-border">
-                <span className="text-[10px] tracking-[0.12em] uppercase text-muted-foreground font-sans">
+              <div key={i} className="h-10 flex flex-col items-center justify-center border-b border-border">
+                <span className="text-[9px] tracking-[0.12em] uppercase text-muted-foreground font-sans leading-none">
                   {dayNames[day.getDay()]}
                 </span>
                 <span
-                  className={`text-lg font-serif mt-0.5 leading-none ${
+                  className={`text-sm font-serif mt-0.5 leading-none ${
                     today
-                      ? "w-7 h-7 flex items-center justify-center rounded-full bg-foreground text-background text-sm"
+                      ? "w-6 h-6 flex items-center justify-center rounded-full bg-foreground text-background text-xs"
                       : "text-foreground"
                   }`}
                 >
@@ -64,17 +59,17 @@ export default function WeekCalendar({ weekStart, availability, isLoading }: Wee
         </div>
 
         {/* Time grid */}
-        <div className="relative">
+        <div>
           {DISPLAY_HOURS.map((hour) => (
             <div
               key={hour}
               className="grid"
-              style={{ gridTemplateColumns: "56px repeat(7, 1fr)" }}
+              style={{ gridTemplateColumns: "64px repeat(7, 1fr)" }}
             >
-              {/* Hour label */}
-              <div className="h-12 flex items-start justify-end pr-3 pt-1">
-                <span className="text-[10px] text-muted-foreground font-mono tracking-wider">
-                  {formatHour(hour)}
+              {/* Hour range label: e.g. "7–8" */}
+              <div className="h-8 flex items-center justify-end pr-3">
+                <span className="text-[10px] text-muted-foreground font-mono tracking-wide whitespace-nowrap">
+                  {hour}–{hour + 1}
                 </span>
               </div>
 
@@ -83,31 +78,31 @@ export default function WeekCalendar({ weekStart, availability, isLoading }: Wee
                 const dateKey = format(day, "yyyy-MM-dd");
                 const busyMap = availMap[dateKey];
                 const isBusy = busyMap?.[hour] === true;
-                const isFree = busyMap?.[hour] === false;
                 const hasData = busyMap !== undefined;
 
-                let cellClass = "h-12 border-b border-r border-border transition-colors";
-                if (isLoading) {
-                  cellClass += " animate-pulse bg-muted/40";
-                } else if (!hasData) {
-                  cellClass += " bg-transparent";
-                } else if (isBusy) {
-                  cellClass += " bg-[var(--busy-light)] border-l-[3px] border-l-[var(--busy)]";
-                } else {
-                  cellClass += " bg-[var(--free-light)] border-l-[3px] border-l-[var(--free)]";
-                }
-
                 return (
-                  <div key={di} className={cellClass}>
-                    {!isLoading && hasData && (
-                      <div className="h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <span
-                          className="text-[9px] tracking-widest uppercase font-sans"
-                          style={{ color: isBusy ? "var(--busy)" : "var(--free)" }}
-                        >
-                          {isBusy ? "忙碌" : "空闲"}
-                        </span>
-                      </div>
+                  <div
+                    key={di}
+                    className={`h-8 border-b border-r border-border transition-colors relative ${
+                      isLoading
+                        ? "animate-pulse bg-muted/30"
+                        : isBusy
+                        ? "border-l-2 border-l-[var(--busy)]"
+                        : ""
+                    }`}
+                    style={
+                      !isLoading && isBusy
+                        ? { backgroundColor: "var(--busy-light)" }
+                        : {}
+                    }
+                  >
+                    {!isLoading && hasData && isBusy && (
+                      <span
+                        className="absolute inset-0 flex items-center justify-center text-[9px] tracking-[0.1em] font-sans"
+                        style={{ color: "var(--busy)" }}
+                      >
+                        已预定
+                      </span>
                     )}
                   </div>
                 );

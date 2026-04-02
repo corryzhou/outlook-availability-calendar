@@ -64,6 +64,26 @@ async function fetchBusyIntervals(
     try {
       const event = new ICAL.Event(vevent);
 
+      // All-day events (DATE type): mark hours 7–22 as busy for each day they span
+      if (event.startDate && event.startDate.isDate) {
+        const allDayStart = event.startDate.toJSDate();
+        const allDayEnd = event.endDate.toJSDate(); // exclusive end for all-day
+        const cursor = new Date(allDayStart);
+        while (cursor < allDayEnd) {
+          const dateStr = cursor.toISOString().slice(0, 10);
+          // Mark 7:00–23:00 (hours 7–22 inclusive = slots 7,8,...,22)
+          for (let h = 7; h <= 22; h++) {
+            const slotStart = new Date(`${dateStr}T${String(h).padStart(2,'0')}:00:00Z`);
+            const slotEnd = new Date(`${dateStr}T${String(h+1).padStart(2,'0')}:00:00Z`);
+            if (slotStart < rangeEnd && slotEnd > rangeStart) {
+              intervals.push({ start: slotStart, end: slotEnd });
+            }
+          }
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+        continue;
+      }
+
       if (event.isRecurring()) {
         const iter = event.iterator();
         let next = iter.next();
