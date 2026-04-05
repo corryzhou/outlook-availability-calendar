@@ -773,50 +773,9 @@
       currentDate = new Date(today);
       loadData();
     });
-    document.getElementById('btnRefresh').addEventListener('click', async () => {
-      // Trigger GitHub Actions to regenerate data.json, then reload after 35s
-      const stored = localStorage.getItem('gh_pat');
-      let pat = stored;
-      if (!pat) {
-        pat = prompt('请输入 GitHub Personal Access Token（仅首次需要，将保存在本地）：');
-        if (!pat) return;
-        localStorage.setItem('gh_pat', pat);
-      }
-      const banner = document.getElementById('errorBanner');
-      const bannerText = document.getElementById('errorText');
-      try {
-        document.getElementById('btnRefresh').classList.add('spinning');
-        document.getElementById('btnRefresh').disabled = true;
-        const r = await fetch(
-          `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
-          { method: 'POST',
-            headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' },
-            body: JSON.stringify({ ref: 'gh-pages' }) }
-        );
-        if (r.status === 204) {
-          banner.style.cssText = 'display:block;background:#e8f4e8;border-bottom:1px solid #b2d8b2;padding:.6rem 0';
-          bannerText.style.color = '#2d6a2d';
-          bannerText.textContent = '正在同步日历数据，约 30 秒后自动刷新...';
-          setTimeout(async () => {
-            banner.style.cssText = '';
-            bannerText.style.color = '';
-            banner.classList.remove('visible');
-            await loadData();
-          }, 35000);
-        } else if (r.status === 401 || r.status === 403) {
-          localStorage.removeItem('gh_pat');
-          throw new Error('Token 无效，已清除，请重新点击刷新并输入正确的 Token');
-        } else {
-          throw new Error(`触发失败 (${r.status})`);
-        }
-      } catch (err) {
-        bannerText.style.color = '';
-        banner.style.cssText = '';
-        bannerText.textContent = '刷新失败：' + err.message;
-        banner.classList.add('visible');
-        document.getElementById('btnRefresh').classList.remove('spinning');
-        document.getElementById('btnRefresh').disabled = false;
-      }
+    document.getElementById('btnRefresh').addEventListener('click', () => {
+      // Simply reload the latest data.json from the server
+      loadData();
     });
 
     // ─── Init ─────────────────────────────────────────────────────────────────
