@@ -367,12 +367,10 @@
 
   <script>
     // ─── Configuration ────────────────────────────────────────────────────────
-    // Replace this with your Outlook iCal link
-    const ICAL_URL = "https://outlook.live.com/owa/calendar/9d6c99e3-9162-4101-acae-2f405d0fe419/235344d5-9335-4670-8d57-dc356dfe96d6/cid-7D127DB2C9A902D1/calendar.ics";
-
-    // CORS proxy (required for browser to fetch iCal cross-origin)
-    // Using a public proxy; you can self-host corsproxy or use your own
-    const CORS_PROXY = "https://api.allorigins.win/raw?url=";
+    // GitHub repo info (used for triggering workflow_dispatch to refresh data)
+    const GITHUB_OWNER = "corryzhou";
+    const GITHUB_REPO  = "outlook-availability-calendar";
+    const GITHUB_WORKFLOW = "sync-calendar.yml";
 
     // Display hours 7–22 (labels "7–8" … "22–23")
     const DISPLAY_HOURS = Array.from({ length: 16 }, (_, i) => i + 7);
@@ -615,12 +613,11 @@
       return newMap;
     }
 
-    // ─── Fetch iCal ───────────────────────────────────────────────────────────
-    async function fetchIcal() {
-      const url = CORS_PROXY + encodeURIComponent(ICAL_URL);
-      const resp = await fetch(url, { cache: 'no-store' });
+    // ─── Fetch data.json ──────────────────────────────────────────────────────
+    async function fetchDataJson() {
+      const resp = await fetch('./data.json', { cache: 'no-store' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.text();
+      return resp.json();
     }
 
     // ─── Render ───────────────────────────────────────────────────────────────
@@ -711,9 +708,17 @@
       renderCalendar(); // show loading state
 
       try {
-        const text = await fetchIcal();
-        const days = getDaysInMonth(currentDate);
-        busyMap = buildBusyMap(text, toDateStr(days[0]), toDateStr(days[days.length - 1]));
+        const json = await fetchDataJson();
+        // Build busyMap from pre-computed data.json
+        busyMap = {};
+        for (const [dateStr, hours] of Object.entries(json.data || {})) {
+          if (hours.length > 0) busyMap[dateStr] = new Set(hours);
+        }
+        // Show last updated time in tz-note
+        if (json.updated_at) {
+          document.querySelector('.tz-note').textContent =
+            '时间均为北京时间（UTC+8）· 数据更新于 ' + json.updated_at;
+        }
       } catch (err) {
         document.getElementById('errorText').textContent =
           '无法加载日历数据，请稍后重试。（' + err.message + '）';
@@ -764,7 +769,51 @@
       currentDate = new Date(today);
       loadData();
     });
-    document.getElementById('btnRefresh').addEventListener('click', loadData);
+    document.getElementById('btnRefresh').addEventListener('click', async () => {
+      // Trigger GitHub Actions to regenerate data.json, then reload after 35s
+      const stored = localStorage.getItem('gh_pat');
+      let pat = stored;
+      if (!pat) {
+        pat = prompt('请输入 GitHub Personal Access Token（仅首次需要，将保存在本地）：');
+        if (!pat) return;
+        localStorage.setItem('gh_pat', pat);
+      }
+      const banner = document.getElementById('errorBanner');
+      const bannerText = document.getElementById('errorText');
+      try {
+        document.getElementById('btnRefresh').classList.add('spinning');
+        document.getElementById('btnRefresh').disabled = true;
+        const r = await fetch(
+          `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`,
+          { method: 'POST',
+            headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' },
+            body: JSON.stringify({ ref: 'gh-pages' }) }
+        );
+        if (r.status === 204) {
+          banner.style.cssText = 'display:block;background:#e8f4e8;border-bottom:1px solid #b2d8b2;padding:.6rem 0';
+          bannerText.style.color = '#2d6a2d';
+          bannerText.textContent = '正在同步日历数据，约 30 秒后自动刷新...';
+          setTimeout(async () => {
+            banner.style.cssText = '';
+            bannerText.style.color = '';
+            banner.classList.remove('visible');
+            await loadData();
+          }, 35000);
+        } else if (r.status === 401 || r.status === 403) {
+          localStorage.removeItem('gh_pat');
+          throw new Error('Token 无效，已清除，请重新点击刷新并输入正确的 Token');
+        } else {
+          throw new Error(`触发失败 (${r.status})`);
+        }
+      } catch (err) {
+        bannerText.style.color = '';
+        banner.style.cssText = '';
+        bannerText.textContent = '刷新失败：' + err.message;
+        banner.classList.add('visible');
+        document.getElementById('btnRefresh').classList.remove('spinning');
+        document.getElementById('btnRefresh').disabled = false;
+      }
+    });
 
     // ─── Init ─────────────────────────────────────────────────────────────────
     loadData();
