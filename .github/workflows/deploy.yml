@@ -21,11 +21,16 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        env:
+          NODE_ENV: production
 
       - name: Build frontend
-        run: npx vite build
+        run: pnpm exec vite build
         env:
           NODE_ENV: production
 

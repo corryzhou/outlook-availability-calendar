@@ -1,10 +1,8 @@
-import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
-import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,7 +148,22 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+// In production (GitHub Actions), skip Manus-private plugins that are not
+// available on the public npm registry.
+const isProduction = process.env.NODE_ENV === "production";
+
+let extraDevPlugins: Plugin[] = [];
+if (!isProduction) {
+  try {
+    const { jsxLocPlugin } = await import("@builder.io/vite-plugin-jsx-loc");
+    const { vitePluginManusRuntime } = await import("vite-plugin-manus-runtime");
+    extraDevPlugins = [jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+  } catch {
+    // Packages not available — skip gracefully
+  }
+}
+
+const plugins = [react(), tailwindcss(), ...extraDevPlugins];
 
 export default defineConfig({
   plugins,
