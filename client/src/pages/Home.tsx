@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   format,
   startOfMonth,
@@ -10,11 +10,28 @@ import {
 } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Clock, RefreshCw } from "lucide-react";
-import { trpc } from "@/lib/trpc";
 
 // Show 7:00 – 23:00: hours 7–22, labels "7–8" ... "22–23"
 const DISPLAY_HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 7..22
 const DAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
+
+// Base URL for the static availability.json file (works for both GitHub Pages and local)
+const AVAILABILITY_JSON_URL = `${import.meta.env.BASE_URL}availability.json`;
+
+interface TimeSlot {
+  start: string;
+  end: string;
+  busy: boolean;
+}
+interface DayAvailability {
+  date: string;
+  slots: TimeSlot[];
+}
+interface AvailabilityData {
+  generated: string;
+  connected: boolean;
+  days: DayAvailability[];
+}
 
 export default function Home() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -26,7 +43,7 @@ export default function Home() {
   const canGoPrev = startOfMonth(currentDate) > minMonth;
   const canGoNext = startOfMonth(currentDate) < maxMonth;
 
-  // Month range for data fetching
+  // Month range (used to filter from the full JSON data)
   const { startDate, endDate } = useMemo(() => {
     const ms = startOfMonth(currentDate);
     const me = endOfMonth(currentDate);
@@ -36,17 +53,40 @@ export default function Home() {
     };
   }, [currentDate]);
 
-  const { data, isLoading, refetch, isFetching } = trpc.calendar.getAvailability.useQuery(
-    { startDate, endDate },
-    { staleTime: 5 * 60 * 1000 }
-  );
+  // ── Static JSON fetch (replaces tRPC — works on GitHub Pages) ──
+  const [allData, setAllData] = useState<AvailabilityData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
 
-  const { data: statusData } = trpc.calendar.status.useQuery(undefined, {
-    staleTime: 30 * 1000,
-  });
+  const fetchData = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      // Cache-bust with timestamp so every refresh reads the latest file
+      const res = await fetch(`${AVAILABILITY_JSON_URL}?_t=${Date.now()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: AvailabilityData = await res.json();
+      setAllData(json);
+    } catch {
+      // Silently fail — user will see "not connected" banner
+    } finally {
+      setIsLoading(false);
+      setIsFetching(false);
+    }
+  }, []);
 
-  const connected = statusData?.connected ?? data?.connected ?? false;
-  const days = data?.days ?? [];
+  // Initial load
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const refetch = fetchData;
+
+  const connected = allData?.connected ?? false;
+  // Filter days to the current month view
+  const days: DayAvailability[] = useMemo(() => {
+    if (!allData) return [];
+    return allData.days.filter((d) => d.date >= startDate && d.date <= endDate);
+  }, [allData, startDate, endDate]);
 
   // Build busy map: date -> hour -> busy
   // Server now encodes Beijing hour in the UTC position of the ISO string

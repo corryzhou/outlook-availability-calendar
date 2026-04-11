@@ -1,0 +1,53 @@
+name: Build & Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build frontend
+        run: npx vite build
+        env:
+          NODE_ENV: production
+
+      - name: Preserve availability.json from gh-pages
+        run: |
+          # If gh-pages already has availability.json, carry it over to the new build
+          git fetch origin gh-pages || true
+          if git show origin/gh-pages:availability.json > dist/public/availability.json 2>/dev/null; then
+            echo "Preserved existing availability.json from gh-pages"
+          else
+            # First deploy — create a placeholder so the page loads cleanly
+            echo '{"generated":"","connected":false,"days":[]}' > dist/public/availability.json
+            echo "Created placeholder availability.json"
+          fi
+
+      - name: Add .nojekyll (required for GitHub Pages with underscored dirs)
+        run: touch dist/public/.nojekyll
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist/public
+          force_orphan: false
+          keep_files: false
