@@ -75,8 +75,20 @@ async function fetchEvents(
   const url = getIcalUrl();
   if (!url) return { allDayDates: [], timedIntervals: [] };
 
-  const response = await fetch(url, {
-    headers: { "User-Agent": "CalendarAvailabilityBot/1.0" },
+  // Add cache-busting: append timestamp param + set cache: "no-store"
+  // Outlook ICS URLs often return Cache-Control headers; Node.js fetch respects
+  // them, causing stale data even when the user clicks "refresh".
+  const bustUrl = url.includes("?")
+    ? `${url}&_t=${Date.now()}`
+    : `${url}?_t=${Date.now()}`;
+
+  const response = await fetch(bustUrl, {
+    headers: {
+      "User-Agent": "CalendarAvailabilityBot/1.0",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+    },
+    cache: "no-store",
     signal: AbortSignal.timeout(15_000),
   });
 
