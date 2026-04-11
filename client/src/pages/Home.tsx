@@ -203,22 +203,30 @@ export default function Home() {
               今天
             </button>
 
-            {/* Refresh button — right side */}
-            <button
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className={`ml-auto w-7 h-7 flex items-center justify-center border border-border transition-colors ${
-                isFetching ? "opacity-50 cursor-not-allowed" : "hover:bg-accent cursor-pointer"
-              }`}
-              aria-label="刷新日历"
-              title="刷新日历"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 transition-transform ${
-                  isFetching ? "animate-spin" : ""
+            {/* Right side: Timestamp + Refresh button */}
+            <div className="ml-auto flex items-center gap-3 relative">
+              {allData?.generated && (
+                <span className="text-[11px] font-mono tracking-tight text-foreground/50">
+                  <span className="hidden sm:inline">上次同步: </span>
+                  {format(new Date(allData.generated), "MM-dd HH:mm", { locale: zhCN })}
+                </span>
+              )}
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className={`w-7 h-7 flex items-center justify-center border border-border transition-colors ${
+                  isFetching ? "opacity-50 cursor-not-allowed" : "hover:bg-accent cursor-pointer"
                 }`}
-              />
-            </button>
+                aria-label="刷新前端数据"
+                title="刷新前端数据 (注意：不会触发后台拉取)"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    isFetching ? "animate-spin" : ""
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>
